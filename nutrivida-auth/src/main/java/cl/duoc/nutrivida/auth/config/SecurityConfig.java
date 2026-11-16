@@ -52,8 +52,10 @@ public class SecurityConfig {
                         // a /error: si esa segunda vuelta no estuviera permitida, caería en el
                         // denyAll de abajo ya sin identidad y el 403 se convertiría en un 401.
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
-                        // El perfil exige token válido: es la revalidación de la sesión del frontend.
-                        .requestMatchers("/api/v1/auth/perfil").authenticated()
+                        // El perfil y la renovación exigen un token válido: el primero revalida la
+                        // sesión del frontend y el segundo la prolonga sin pedir la contraseña.
+                        .requestMatchers("/api/v1/auth/perfil", "/api/v1/auth/renovar")
+                        .authenticated()
                         // La gestión de usuarios queda reservada al rol ADMIN.
                         .requestMatchers("/api/v1/usuarios/**").hasRole("ADMIN")
                         // Cierro cualquier ruta que no haya declarado arriba.

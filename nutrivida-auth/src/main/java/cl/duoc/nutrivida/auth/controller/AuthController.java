@@ -51,4 +51,13 @@ public class AuthController {
         // Principal trae el correo que el filtro JWT dejó en el contexto de seguridad.
         return auth.perfil(principal.getName());
     }
+
+    // Renovación: entrego un token nuevo a quien ya trae uno válido, sin pedirle la contraseña
+    // otra vez. Si el token recibido está vencido o alterado, el filtro responde 401 antes de
+    // llegar aquí, así que nunca se renueva una sesión que ya expiró.
+    @PostMapping("/renovar")
+    @Operation(summary = "Entrega un token nuevo a partir de una sesión todavía válida")
+    public LoginResponse renovar(Principal principal) {
+        return auth.renovar(principal.getName());
+    }
 }

@@ -76,4 +76,22 @@ public class AuthService {
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado: " + correo));
         return UsuarioResponse.desde(usuario);
     }
+
+    // Renovación del token. El frontend la llama cuando la sesión está por vencer, para que a
+    // la persona no se le corte el trabajo a mitad de camino.
+    public LoginResponse renovar(String correo) {
+        // Solo llego hasta aquí si el filtro ya validó la firma, el emisor y la expiración del
+        // token actual: nunca emito un token nuevo a partir de uno vencido o alterado.
+        Usuario usuario = usuarios.findByCorreoIgnoreCase(correo)
+                .orElseThrow(() -> new BadCredentialsException("Credenciales inválidas"));
+
+        // Releo la cuenta desde la base en vez de confiar en los datos del token viejo. Así, si
+        // el administrador desactivó la cuenta o le cambió el rol, la renovación lo respeta.
+        if (!usuario.isActivo()) {
+            throw new BadCredentialsException("Credenciales inválidas");
+        }
+
+        return new LoginResponse(jwt.generar(usuario), usuario.getCorreo(),
+                usuario.getNombre(), usuario.getRol());
+    }
 }
