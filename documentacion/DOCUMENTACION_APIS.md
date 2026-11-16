@@ -100,6 +100,28 @@ El token lleva los claims `iss` (siempre `nutrivida-auth`), `sub` con el correo,
 | Roles permitidos | Los tres |
 | Observaciones | El frontend lo llama al recargar la página para revalidar la sesión guardada |
 
+### POST /api/v1/auth/renovar
+
+| Campo | Detalle |
+|---|---|
+| Descripción | Entrega un token nuevo a quien ya trae uno válido, sin volver a pedir la contraseña |
+| Datos de entrada | Ninguno. La credencial es el token del encabezado `Authorization` |
+| Respuestas | 200 (token nuevo), 401 (token ausente, vencido o alterado) |
+| Requiere autenticación | Sí |
+| Roles permitidos | Los tres |
+| Observaciones | La respuesta tiene la misma forma que la del login |
+
+Devuelve lo mismo que `/auth/login`: `token`, `correo`, `nombre` y `rol`.
+
+Dos detalles de seguridad de este endpoint:
+
+- Nunca renuevo a partir de un token vencido o alterado. El filtro valida la firma, el emisor y
+  la expiración antes de que la petición llegue al controlador, así que un token caducado recibe
+  401 y no un token nuevo.
+- Releo la cuenta desde la base de datos en vez de confiar en los datos del token anterior. Si el
+  administrador cambió el rol, el token nuevo lleva el rol actual; y si desactivó la cuenta, la
+  renovación se rechaza aunque el token viejo siguiera vigente.
+
 ## Endpoint de usuarios
 
 Es el CRUD del panel de administración. Todas las operaciones exigen rol `ADMIN`: un token de

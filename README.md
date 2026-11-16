@@ -100,6 +100,7 @@ Todas las rutas van versionadas con el prefijo `/api/v1`.
 | `POST /api/v1/auth/login` | Público |
 | `POST /api/v1/auth/registro` | Público, crea una cuenta de paciente |
 | `GET /api/v1/auth/perfil` | Cualquier sesión válida |
+| `POST /api/v1/auth/renovar` | Cualquier sesión válida |
 | `GET /api/v1/usuarios` | `ADMIN` |
 | `GET /api/v1/usuarios/{id}` | `ADMIN` |
 | `POST /api/v1/usuarios` | `ADMIN` |
