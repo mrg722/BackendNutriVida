@@ -1,6 +1,6 @@
 -- Script de preparación de la base de datos de la Clínica NutriVida.
 -- Lo ejecuto con un usuario administrador de MySQL, antes de levantar los microservicios.
--- Sigo la Guía 15: una base por microservicio y una cuenta propia para cada aplicación.
+-- Creo una base de datos por microservicio y una cuenta de MySQL propia para cada aplicación.
 
 -- Creo las dos bases por separado, porque cada microservicio es dueño de sus propias tablas
 -- y ninguno debe poder leer ni escribir en las del otro.
@@ -13,7 +13,7 @@ CREATE DATABASE IF NOT EXISTS nutrivida_citas
 
 -- Creo una cuenta por aplicación para no ejecutar nada con root.
 -- Reemplazo CAMBIAR_CLAVE_AUTH y CAMBIAR_CLAVE_CITAS por claves reales, que nunca van a Git:
--- viajan por variables de entorno, como indica la Guía 18.
+-- viajan por variables de entorno.
 CREATE USER IF NOT EXISTS 'nutrivida_auth_app'@'localhost'
   IDENTIFIED BY 'CAMBIAR_CLAVE_AUTH';
 

@@ -1,4 +1,4 @@
-# Unidad de systemd del microservicio de citas, según la Guía 18.
+# Unidad de systemd del microservicio de citas.
 # La copio a /etc/systemd/system/nutrivida-citas.service en la instancia EC2.
 # Es una unidad separada de la de auth: son dos procesos Java independientes y cada uno
 # se reinicia, se actualiza y se revisa por su cuenta.

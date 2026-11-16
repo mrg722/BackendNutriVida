@@ -17,7 +17,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-// Expongo las rutas de autenticación. Uso /api/v1 porque el Anexo 1 pide versionar la API.
+// Expongo las rutas de autenticación. Versiono la API con el prefijo /api/v1 para poder
+// publicar cambios más adelante sin romper a quien ya consume esta versión.
 @RestController
 @RequestMapping("/api/v1/auth")
 @Tag(name = "Autenticación", description = "Inicio de sesión, registro público y perfil de la sesión")

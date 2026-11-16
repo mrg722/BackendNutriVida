@@ -18,7 +18,7 @@
 	<description>Microservicio de autenticación y usuarios de la Clínica NutriVida</description>
 
 	<properties>
-		<!-- Uso Java 21 porque es el JDK instalado y el que la Guía 18 instala en EC2 -->
+		<!-- Uso Java 21: es la versión con la que compilo y la que corre en el servidor -->
 		<java.version>21</java.version>
 	</properties>
 
@@ -108,7 +108,7 @@
 
 	<build>
 		<plugins>
-			<!-- Este plugin empaqueta el JAR ejecutable que la Guía 18 copia al servidor -->
+			<!-- Este plugin empaqueta el JAR ejecutable que después copio al servidor -->
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>

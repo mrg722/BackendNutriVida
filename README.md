@@ -40,7 +40,7 @@ responden `401` y los intentos con token válido pero sin permiso responden `403
 
 ## Requisitos
 
-- JDK 21 (es el que instala la Guía 18 en el servidor).
+- JDK 21.
 - MySQL 8 en el puerto 3306.
 - No hace falta instalar Maven: cada proyecto trae su propio `mvnw`.
 
@@ -91,7 +91,7 @@ El detalle de cada endpoint, con su método, cuerpo, respuestas y roles, está e
 
 ## Endpoints
 
-Todas las rutas van versionadas con el prefijo `/api/v1`, como pide el Anexo 1.
+Todas las rutas van versionadas con el prefijo `/api/v1`.
 
 ### nutrivida-auth
 
@@ -173,9 +173,9 @@ Necesitan MySQL arriba, porque levantan el contexto completo contra la base real
 
 ## Despliegue
 
-La carpeta `despliegue/` tiene todo lo que pide la Guía 18: el script SQL, las dos unidades de
-systemd, la configuración de Nginx como proxy inverso y las plantillas de variables de entorno.
-El procedimiento paso a paso está en
+La carpeta `despliegue/` reúne lo necesario para publicar el proyecto: el script SQL, las dos
+unidades de systemd, la configuración de Nginx como proxy inverso y las plantillas de variables
+de entorno. El procedimiento paso a paso está en
 [`documentacion/DESPLIEGUE.md`](documentacion/DESPLIEGUE.md).
 
 En producción Nginx es el único puerto público. Los dos microservicios escuchan solo en
@@ -190,5 +190,5 @@ En producción Nginx es el único puerto público. Los dos microservicios escuch
 nutrivida-auth/      microservicio de autenticación y usuarios
 nutrivida-citas/     microservicio de citas, catálogo y fichas clínicas
 despliegue/          script SQL, unidades systemd, Nginx y plantillas de entorno
-documentacion/       documentación de APIs, integración y despliegue
+documentacion/       documentación de los endpoints y del despliegue
 ```

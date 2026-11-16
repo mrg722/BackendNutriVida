@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-// CRUD del catálogo de servicios. Las rutas van versionadas en /api/v1 como pide el Anexo 1.
+// CRUD del catálogo de servicios, con las rutas versionadas igual que el resto de la API.
 @RestController
 @RequestMapping("/api/v1/servicios")
 @Tag(name = "Servicios", description = "Catálogo de consultas, planes, evaluaciones y talleres")
