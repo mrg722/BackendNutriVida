@@ -1,6 +1,7 @@
 package cl.duoc.nutrivida.auth.config;
 
 import cl.duoc.nutrivida.auth.security.JwtAuthenticationFilter;
+import jakarta.servlet.DispatcherType;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -46,6 +47,11 @@ public class SecurityConfig {
                         // La documentación queda abierta para poder revisar el contrato.
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**")
                         .permitAll()
+                        // Dejo pasar el despacho interno de error de Tomcat. Cuando Spring
+                        // deniega por rol llama a sendError(403), y eso reenvía la petición
+                        // a /error: si esa segunda vuelta no estuviera permitida, caería en el
+                        // denyAll de abajo ya sin identidad y el 403 se convertiría en un 401.
+                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         // El perfil exige token válido: es la revalidación de la sesión del frontend.
                         .requestMatchers("/api/v1/auth/perfil").authenticated()
                         // La gestión de usuarios queda reservada al rol ADMIN.

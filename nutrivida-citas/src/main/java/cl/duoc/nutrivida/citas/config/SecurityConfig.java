@@ -1,6 +1,7 @@
 package cl.duoc.nutrivida.citas.config;
 
 import cl.duoc.nutrivida.citas.security.JwtAuthenticationFilter;
+import jakarta.servlet.DispatcherType;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -37,6 +38,11 @@ public class SecurityConfig {
                         // Documentación abierta para poder revisar y probar el contrato.
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**")
                         .permitAll()
+                        // Dejo pasar el despacho interno de error de Tomcat. Cuando Spring
+                        // deniega por rol llama a sendError(403), y eso reenvía la petición
+                        // a /error: si esa segunda vuelta no estuviera permitida, caería en el
+                        // denyAll de abajo ya sin identidad y el 403 se convertiría en un 401.
+                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
 
                         // Catálogo: cualquiera con sesión lo lee; solo ADMIN lo modifica.
                         .requestMatchers(HttpMethod.GET, "/api/v1/servicios/**").authenticated()

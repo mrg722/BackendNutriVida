@@ -178,12 +178,13 @@ public class CitaService {
             throw new ReglaNegocioException("El servicio "
                     + servicio.getNombre() + " no está disponible");
         }
+        // Estas dos son datos mal enviados, no un choque con otra cita, así que respondo 400.
         // No tiene sentido pedir una hora que ya pasó.
         if (request.fecha().isBefore(LocalDate.now())) {
-            throw new ReglaNegocioException("La fecha no puede ser anterior a hoy");
+            throw new IllegalArgumentException("La fecha no puede ser anterior a hoy");
         }
         if (request.hora().isBefore(HORA_APERTURA) || request.hora().isAfter(HORA_CIERRE)) {
-            throw new ReglaNegocioException("La hora debe estar entre las 09:00 y las 18:00");
+            throw new IllegalArgumentException("La hora debe estar entre las 09:00 y las 18:00");
         }
 
         // Evito la doble reserva, que es justo el problema de la agenda de papel del caso.
