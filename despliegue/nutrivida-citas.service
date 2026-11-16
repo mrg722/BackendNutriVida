@@ -1,0 +1,18 @@
+# Unidad de systemd del microservicio de citas, según la Guía 18.
+# La copio a /etc/systemd/system/nutrivida-citas.service en la instancia EC2.
+# Es una unidad separada de la de auth: son dos procesos Java independientes y cada uno
+# se reinicia, se actualiza y se revisa por su cuenta.
+
+[Unit]
+Description=NutriVida Citas API
+After=network.target mysql.service
+
+[Service]
+User=ubuntu
+EnvironmentFile=/etc/nutrivida/citas.env
+ExecStart=/usr/bin/java -jar /opt/nutrivida-citas/app.jar
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
