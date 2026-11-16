@@ -1,4 +1,4 @@
-# Unidad de systemd del microservicio de autenticación, según la Guía 18.
+# Unidad de systemd del microservicio de autenticación.
 # La copio a /etc/systemd/system/nutrivida-auth.service en la instancia EC2.
 
 [Unit]

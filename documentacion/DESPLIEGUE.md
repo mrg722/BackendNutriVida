@@ -1,6 +1,6 @@
 # Despliegue en AWS EC2
 
-Procedimiento de despliegue de los dos microservicios y del frontend, siguiendo la Guía 18.
+Procedimiento de despliegue de los dos microservicios y del frontend en una instancia EC2.
 Los archivos que menciono están en la carpeta `despliegue/` de este repositorio.
 
 ## 1. Arquitectura de producción
