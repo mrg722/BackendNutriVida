@@ -1,0 +1,20 @@
+# Unidad de systemd del microservicio de autenticación, según la Guía 18.
+# La copio a /etc/systemd/system/nutrivida-auth.service en la instancia EC2.
+
+[Unit]
+Description=NutriVida Auth API
+# Espero a que haya red y a que MySQL esté arriba: sin base de datos no puede arrancar.
+After=network.target mysql.service
+
+[Service]
+User=ubuntu
+# Las credenciales y el secreto del token llegan desde este archivo protegido con chmod 600,
+# así no quedan escritas ni en la unidad ni en el repositorio.
+EnvironmentFile=/etc/nutrivida/auth.env
+ExecStart=/usr/bin/java -jar /opt/nutrivida-auth/app.jar
+# Si el proceso se cae, systemd lo vuelve a levantar solo, sin tocar el otro microservicio.
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
