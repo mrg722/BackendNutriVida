@@ -1,0 +1,525 @@
+{
+  "info": {
+    "name": "Clínica NutriVida · API EP3",
+    "description": "Colección para probar los dos microservicios de la Clínica NutriVida.\n\nCómo usarla: ejecuto primero 'Iniciar sesión' dentro de la carpeta Autenticación. Esa petición guarda el token en la variable {{token}} automáticamente, así que el resto de las peticiones ya salen autenticadas y no tengo que pegar el token a mano en cada una.\n\nPara probar los permisos cambio las variables {{correo}} y {{password}} por otra cuenta y vuelvo a iniciar sesión: con paciente@nutrivida.cl las operaciones de administración responden 403, y sin token responden 401.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "authUrl", "value": "http://localhost:8081/api/v1", "type": "string" },
+    { "key": "citasUrl", "value": "http://localhost:8082/api/v1", "type": "string" },
+    { "key": "correo", "value": "admin@nutrivida.cl", "type": "string" },
+    { "key": "password", "value": "Cambiar123!", "type": "string" },
+    { "key": "token", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Autenticación",
+      "item": [
+        {
+          "name": "Iniciar sesión (guarda el token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Guardo el token en la variable de la colección para no pegarlo a mano",
+                  "// en cada una de las peticiones protegidas.",
+                  "if (pm.response.code === 200) {",
+                  "    const cuerpo = pm.response.json();",
+                  "    pm.collectionVariables.set('token', cuerpo.token);",
+                  "}",
+                  "",
+                  "pm.test('Responde 200 y entrega un token', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json()).to.have.property('token');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correo\": \"{{correo}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": { "raw": "{{authUrl}}/auth/login", "host": ["{{authUrl}}"], "path": ["auth", "login"] },
+            "description": "Comprueba las credenciales y devuelve el token con el rol. Responde 401 si la clave es incorrecta o la cuenta está desactivada."
+          }
+        },
+        {
+          "name": "Iniciar sesión con clave incorrecta (401)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correo\": \"admin@nutrivida.cl\",\n  \"password\": \"clave-que-no-es\"\n}"
+            },
+            "url": { "raw": "{{authUrl}}/auth/login", "host": ["{{authUrl}}"], "path": ["auth", "login"] },
+            "description": "Prueba negativa. Devuelve el mismo mensaje que un correo inexistente, para no revelar qué cuentas existen."
+          }
+        },
+        {
+          "name": "Registro público de paciente",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Ana Pérez\",\n  \"correo\": \"ana.perez@gmail.com\",\n  \"password\": \"Clave123\"\n}"
+            },
+            "url": { "raw": "{{authUrl}}/auth/registro", "host": ["{{authUrl}}"], "path": ["auth", "registro"] },
+            "description": "Crea una cuenta nueva. El rol queda siempre en PACIENTE: el cuerpo no puede elegirlo. Repetir el correo responde 409."
+          }
+        },
+        {
+          "name": "Perfil de la sesión",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{authUrl}}/auth/perfil", "host": ["{{authUrl}}"], "path": ["auth", "perfil"] },
+            "description": "Devuelve el usuario dueño del token. El frontend lo llama al recargar la página para revalidar la sesión guardada."
+          }
+        },
+        {
+          "name": "Renovar el token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{authUrl}}/auth/renovar", "host": ["{{authUrl}}"], "path": ["auth", "renovar"] },
+            "description": "Entrega un token nuevo a partir de uno todavía válido. Relee la cuenta desde la base, así que respeta un cambio de rol o una desactivación."
+          }
+        },
+        {
+          "name": "Perfil sin token (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{authUrl}}/auth/perfil", "host": ["{{authUrl}}"], "path": ["auth", "perfil"] },
+            "description": "Prueba negativa: sin encabezado Authorization la respuesta es 401."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Usuarios (solo ADMIN)",
+      "item": [
+        {
+          "name": "Listar usuarios",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{authUrl}}/usuarios?rol=NUTRICIONISTA",
+              "host": ["{{authUrl}}"],
+              "path": ["usuarios"],
+              "query": [{ "key": "rol", "value": "NUTRICIONISTA", "description": "Filtro opcional por rol" }]
+            },
+            "description": "Con un token de PACIENTE o NUTRICIONISTA esta misma petición responde 403."
+          }
+        },
+        {
+          "name": "Buscar usuario por id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{authUrl}}/usuarios/1", "host": ["{{authUrl}}"], "path": ["usuarios", "1"] }
+          }
+        },
+        {
+          "name": "Crear usuario (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Secretaria de prueba\",\n  \"correo\": \"secretaria@nutrivida.cl\",\n  \"password\": \"Clave123\",\n  \"rol\": \"ADMIN\",\n  \"activo\": true\n}"
+            },
+            "url": { "raw": "{{authUrl}}/usuarios", "host": ["{{authUrl}}"], "path": ["usuarios"] },
+            "description": "El rol solo admite ADMIN, NUTRICIONISTA o PACIENTE. Cualquier otro valor responde 400."
+          }
+        },
+        {
+          "name": "Editar usuario o desactivarlo",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Secretaria de prueba\",\n  \"correo\": \"secretaria@nutrivida.cl\",\n  \"password\": \"\",\n  \"rol\": \"ADMIN\",\n  \"activo\": false\n}"
+            },
+            "url": { "raw": "{{authUrl}}/usuarios/7", "host": ["{{authUrl}}"], "path": ["usuarios", "7"] },
+            "description": "Si la contraseña va vacía se conserva la anterior. Con activo en false la cuenta deja de poder iniciar sesión."
+          }
+        },
+        {
+          "name": "Eliminar usuario (204)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{authUrl}}/usuarios/7", "host": ["{{authUrl}}"], "path": ["usuarios", "7"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Catálogo de servicios",
+      "item": [
+        {
+          "name": "Listar el catálogo",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{citasUrl}}/servicios?soloActivos=true",
+              "host": ["{{citasUrl}}"],
+              "path": ["servicios"],
+              "query": [
+                { "key": "soloActivos", "value": "true" },
+                { "key": "tipo", "value": "Consulta", "disabled": true }
+              ]
+            },
+            "description": "Lo lee cualquier sesión válida. Sin token responde 401."
+          }
+        },
+        {
+          "name": "Buscar servicio por id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{citasUrl}}/servicios/1", "host": ["{{citasUrl}}"], "path": ["servicios", "1"] }
+          }
+        },
+        {
+          "name": "Crear servicio (201, solo ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"CN006\",\n  \"tipo\": \"Consulta\",\n  \"nombre\": \"Control nutricional express\",\n  \"duracionMinutos\": 20,\n  \"modalidad\": \"Presencial\",\n  \"precio\": 18000,\n  \"descripcion\": \"Control breve de seguimiento entre sesiones.\",\n  \"activo\": true\n}"
+            },
+            "url": { "raw": "{{citasUrl}}/servicios", "host": ["{{citasUrl}}"], "path": ["servicios"] },
+            "description": "Repetir el código responde 409. Un precio negativo responde 400."
+          }
+        },
+        {
+          "name": "Actualizar servicio",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"CN006\",\n  \"tipo\": \"Consulta\",\n  \"nombre\": \"Control nutricional express\",\n  \"duracionMinutos\": 20,\n  \"modalidad\": \"Presencial\",\n  \"precio\": 19000,\n  \"descripcion\": \"Control breve de seguimiento entre sesiones.\",\n  \"activo\": true\n}"
+            },
+            "url": { "raw": "{{citasUrl}}/servicios/19", "host": ["{{citasUrl}}"], "path": ["servicios", "19"] }
+          }
+        },
+        {
+          "name": "Eliminar servicio (204)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{citasUrl}}/servicios/19", "host": ["{{citasUrl}}"], "path": ["servicios", "19"] }
+          }
+        },
+        {
+          "name": "Servicio inexistente (404)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{citasUrl}}/servicios/999999", "host": ["{{citasUrl}}"], "path": ["servicios", "999999"] },
+            "description": "Prueba negativa: el manejador de errores convierte la excepción en un 404 con cuerpo JSON."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Nutricionistas",
+      "item": [
+        {
+          "name": "Listar el directorio",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{citasUrl}}/nutricionistas?soloActivos=true",
+              "host": ["{{citasUrl}}"],
+              "path": ["nutricionistas"],
+              "query": [{ "key": "soloActivos", "value": "true" }]
+            },
+            "description": "El formulario de agendamiento usa soloActivos para no ofrecer profesionales que ya no atienden."
+          }
+        },
+        {
+          "name": "Buscar nutricionista por id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{citasUrl}}/nutricionistas/1", "host": ["{{citasUrl}}"], "path": ["nutricionistas", "1"] }
+          }
+        },
+        {
+          "name": "Agregar nutricionista (201, solo ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"NUT005\",\n  \"nombre\": \"Nut. Prueba Demostración\",\n  \"correo\": \"prueba@nutrivida.cl\",\n  \"especialidad\": \"Nutrición general\",\n  \"diasAtencion\": \"Lunes a Viernes\",\n  \"horario\": \"09:00 - 18:00\",\n  \"activo\": true\n}"
+            },
+            "url": { "raw": "{{citasUrl}}/nutricionistas", "host": ["{{citasUrl}}"], "path": ["nutricionistas"] },
+            "description": "El código y el correo son únicos. El correo es el vínculo con la cuenta del microservicio de autenticación."
+          }
+        },
+        {
+          "name": "Actualizar nutricionista",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigo\": \"NUT005\",\n  \"nombre\": \"Nut. Prueba Demostración\",\n  \"correo\": \"prueba@nutrivida.cl\",\n  \"especialidad\": \"Nutrición general\",\n  \"diasAtencion\": \"Lunes a Viernes\",\n  \"horario\": \"09:00 - 18:00\",\n  \"activo\": false\n}"
+            },
+            "url": { "raw": "{{citasUrl}}/nutricionistas/5", "host": ["{{citasUrl}}"], "path": ["nutricionistas", "5"] }
+          }
+        },
+        {
+          "name": "Eliminar nutricionista (204)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{citasUrl}}/nutricionistas/5", "host": ["{{citasUrl}}"], "path": ["nutricionistas", "5"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Citas",
+      "item": [
+        {
+          "name": "Mis citas (según el rol del token)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{citasUrl}}/citas/mias", "host": ["{{citasUrl}}"], "path": ["citas", "mias"] },
+            "description": "Al PACIENTE le devuelve sus citas, al NUTRICIONISTA su agenda y al ADMIN todas. La decisión la toma el servidor, no el cliente."
+          }
+        },
+        {
+          "name": "Todas las citas (solo ADMIN)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{citasUrl}}/citas", "host": ["{{citasUrl}}"], "path": ["citas"] },
+            "description": "Con un token de PACIENTE responde 403."
+          }
+        },
+        {
+          "name": "Buscar cita por id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{citasUrl}}/citas/1", "host": ["{{citasUrl}}"], "path": ["citas", "1"] },
+            "description": "Solo la ve su paciente, el nutricionista de esa agenda o el administrador. Cualquier otro recibe 403."
+          }
+        },
+        {
+          "name": "Solicitar hora (201, PACIENTE)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nutricionistaId\": 1,\n  \"servicioId\": 1,\n  \"fecha\": \"2026-12-15\",\n  \"hora\": \"10:00\",\n  \"motivo\": \"Primera consulta para control de peso\"\n}"
+            },
+            "url": { "raw": "{{citasUrl}}/citas", "host": ["{{citasUrl}}"], "path": ["citas"] },
+            "description": "El correo del paciente lo toma del token, no del cuerpo. Nace siempre en estado SOLICITADA. Repetir el horario responde 409."
+          }
+        },
+        {
+          "name": "Reprogramar cita",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nutricionistaId\": 1,\n  \"servicioId\": 1,\n  \"fecha\": \"2026-12-18\",\n  \"hora\": \"15:30\",\n  \"motivo\": \"Primera consulta para control de peso\"\n}"
+            },
+            "url": { "raw": "{{citasUrl}}/citas/1", "host": ["{{citasUrl}}"], "path": ["citas", "1"] },
+            "description": "La cita vuelve a SOLICITADA, porque la clínica tiene que confirmar el horario nuevo."
+          }
+        },
+        {
+          "name": "Cambiar el estado de la cita",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"estado\": \"CONFIRMADA\"\n}" },
+            "url": { "raw": "{{citasUrl}}/citas/1/estado", "host": ["{{citasUrl}}"], "path": ["citas", "1", "estado"] },
+            "description": "Estados: SOLICITADA, CONFIRMADA, ATENDIDA, CANCELADA y NO_ASISTIO. Un PACIENTE solo puede poner CANCELADA; cualquier otro valor le responde 403. Una cita en estado final responde 409."
+          }
+        },
+        {
+          "name": "Hora fuera del horario de atención (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nutricionistaId\": 1,\n  \"servicioId\": 1,\n  \"fecha\": \"2026-12-20\",\n  \"hora\": \"20:00\",\n  \"motivo\": \"Consulta fuera del horario de atención\"\n}"
+            },
+            "url": { "raw": "{{citasUrl}}/citas", "host": ["{{citasUrl}}"], "path": ["citas"] },
+            "description": "Prueba negativa. La clínica atiende de 09:00 a 18:00; fuera de ese rango es un dato inválido, por eso 400 y no 409."
+          }
+        },
+        {
+          "name": "Eliminar cita (204, solo ADMIN)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{citasUrl}}/citas/1", "host": ["{{citasUrl}}"], "path": ["citas", "1"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Ficha clínica",
+      "item": [
+        {
+          "name": "Mi historial (PACIENTE)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{citasUrl}}/mediciones/mias", "host": ["{{citasUrl}}"], "path": ["mediciones", "mias"] },
+            "description": "Usa el correo del token, no un parámetro, así nadie puede pedir el historial de otra persona."
+          }
+        },
+        {
+          "name": "Mediciones que registré (NUTRICIONISTA)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{citasUrl}}/mediciones/registradas", "host": ["{{citasUrl}}"], "path": ["mediciones", "registradas"] }
+          }
+        },
+        {
+          "name": "Ficha de un paciente",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{citasUrl}}/mediciones/paciente/paciente@nutrivida.cl",
+              "host": ["{{citasUrl}}"],
+              "path": ["mediciones", "paciente", "paciente@nutrivida.cl"]
+            },
+            "description": "Un nutricionista solo ve las mediciones que él mismo registró, aunque la ficha tenga más."
+          }
+        },
+        {
+          "name": "Registrar medición (201, NUTRICIONISTA)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correoPaciente\": \"paciente@nutrivida.cl\",\n  \"fecha\": \"2026-11-17\",\n  \"pesoKg\": 82.5,\n  \"tallaCm\": 172,\n  \"cinturaCm\": 95,\n  \"observaciones\": \"Primer control del plan\",\n  \"planAlimenticio\": \"Cuatro comidas diarias con colación de media tarde.\"\n}"
+            },
+            "url": { "raw": "{{citasUrl}}/mediciones", "host": ["{{citasUrl}}"], "path": ["mediciones"] },
+            "description": "La respuesta incluye el IMC calculado por el backend. Con un token de PACIENTE responde 403."
+          }
+        },
+        {
+          "name": "Corregir medición",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correoPaciente\": \"paciente@nutrivida.cl\",\n  \"fecha\": \"2026-11-17\",\n  \"pesoKg\": 81.0,\n  \"tallaCm\": 172,\n  \"cinturaCm\": 94,\n  \"observaciones\": \"Corrección del peso registrado\",\n  \"planAlimenticio\": \"Cuatro comidas diarias con colación de media tarde.\"\n}"
+            },
+            "url": { "raw": "{{citasUrl}}/mediciones/1", "host": ["{{citasUrl}}"], "path": ["mediciones", "1"] },
+            "description": "Solo el profesional que la registró, o el administrador, pueden modificarla."
+          }
+        },
+        {
+          "name": "Peso fuera de rango (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correoPaciente\": \"paciente@nutrivida.cl\",\n  \"fecha\": \"2026-11-17\",\n  \"pesoKg\": 500,\n  \"tallaCm\": 172\n}"
+            },
+            "url": { "raw": "{{citasUrl}}/mediciones", "host": ["{{citasUrl}}"], "path": ["mediciones"] },
+            "description": "Prueba negativa: el peso admite de 1 a 400 kilos, para atajar errores de tipeo en la consulta."
+          }
+        },
+        {
+          "name": "Eliminar medición (204)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{citasUrl}}/mediciones/1", "host": ["{{citasUrl}}"], "path": ["mediciones", "1"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Estadísticas",
+      "item": [
+        {
+          "name": "Indicadores de la clínica (solo ADMIN)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{citasUrl}}/estadisticas", "host": ["{{citasUrl}}"], "path": ["estadisticas"] },
+            "description": "Devuelve el total de citas, el desglose por estado, la tasa de inasistencia y las atenciones por profesional."
+          }
+        }
+      ]
+    }
+  ]
+}
