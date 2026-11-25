@@ -49,7 +49,7 @@ REM archivo y la proxima ejecucion crea una nueva.
 set "CLAVEJWT=%LOGS%\jwt-demostracion.key"
 if not exist "%CLAVEJWT%" (
     echo       Generando la clave de firma de los tokens...
-    powershell -NoProfile -Command "$bytes = New-Object byte[] 48; [Security.Cryptography.RandomNumberGenerator]::Fill($bytes); [Convert]::ToBase64String($bytes) | Set-Content -NoNewline -Path '%CLAVEJWT%' -Encoding ascii"
+    powershell -NoProfile -Command "$b = New-Object byte[] 48; $r = New-Object System.Security.Cryptography.RNGCryptoServiceProvider; $r.GetBytes($b); $r.Dispose(); [Convert]::ToBase64String($b) | Set-Content -NoNewline -Path '%CLAVEJWT%' -Encoding ascii"
 )
 for /f "usebackq delims=" %%k in ("%CLAVEJWT%") do set "JWT_SECRET=%%k"
 
@@ -60,6 +60,29 @@ if not defined JWT_SECRET (
     exit /b 1
 )
 
+
+REM --- Credenciales de la base de datos ---------------------------------------
+REM Cada microservicio entra a MySQL con su propia cuenta, no con root. La de
+REM auth solo tiene permisos sobre nutrivida_auth y la de citas solo sobre
+REM nutrivida_citas, asi que ninguno puede leer ni escribir en la base del otro.
+REM
+REM Las contrasenas viven en este archivo, fuera de los dos repositorios, y se
+REM cargan aqui como variables de entorno. Si el archivo no esta, los servicios
+REM no arrancan: prefiero que falle a la vista antes que caer en root.
+set "CREDENCIALES=%LOGS%\nutrivida-credenciales.env"
+if not exist "%CREDENCIALES%" (
+    echo   ERROR: falta el archivo de credenciales %CREDENCIALES%
+    echo   Sin el, los microservicios no pueden entrar a la base de datos.
+    pause
+    exit /b 1
+)
+for /f "usebackq tokens=1,* delims==" %%a in ("%CREDENCIALES%") do set "%%a=%%b"
+
+if not defined AUTH_DB_PASSWORD (
+    echo   ERROR: no pude leer las credenciales de la base de datos.
+    pause
+    exit /b 1
+)
 REM --- 2. Microservicio de autenticacion --------------------------------------
 netstat -ano | findstr /r /c:":8081 .*LISTENING" >nul
 if %errorlevel%==0 (
