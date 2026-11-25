@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 // Pruebas de integración del microservicio de citas. Levanto la aplicación completa y hago
@@ -30,6 +31,10 @@ import org.springframework.test.web.servlet.MockMvc;
 // microservicio, que es justamente la independencia que buscábamos en la arquitectura.
 @SpringBootTest
 @AutoConfigureMockMvc
+// Las pruebas necesitan una clave de firma, y la aplicación ya no trae ninguna por defecto.
+// Le paso aquí una fija y exclusiva de las pruebas: así el conjunto corre solo, sin depender de
+// la variable de entorno del equipo, y la clave real de la demostración nunca entra al código.
+@TestPropertySource(properties = "app.jwt.secret=Y2xhdmUtZXhjbHVzaXZhLXBhcmEtbGFzLXBydWViYXMtYXV0b21hdGl6YWRhcy1kZS1udXRyaXZpZGE=")
 class CitasIntegracionTest {
 
     @Autowired
@@ -170,13 +175,64 @@ class CitasIntegracionTest {
     @Test
     @DisplayName("Una hora fuera del horario de atención responde 400")
     void horaFueraDeHorario() throws Exception {
+        // El 2030-12-13 es viernes, uno de los días que atiende esta nutricionista, así que lo
+        // único que está mal aquí es la hora: ella cierra a las 17:00.
         mockMvc.perform(post("/api/v1/citas")
                         .header("Authorization", "Bearer " + tokenPaciente())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"nutricionistaId\":1,\"servicioId\":1,"
-                                + "\"fecha\":\"2030-12-15\",\"hora\":\"20:00\","
+                                + "\"fecha\":\"2030-12-13\",\"hora\":\"20:00\","
                                 + "\"motivo\":\"Consulta fuera del horario de atencion\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("Agendar en un día que la nutricionista no atiende responde 400")
+    void diaQueNoAtiende() throws Exception {
+        // Esta nutricionista atiende lunes, miércoles y viernes, y el 2030-12-15 es domingo.
+        // La hora sí cae dentro de su jornada: lo que no corresponde es el día. Antes esta
+        // petición se aceptaba, porque la regla usaba un horario único para toda la clínica y
+        // nunca miraba los días que la tabla guarda para cada profesional.
+        mockMvc.perform(post("/api/v1/citas")
+                        .header("Authorization", "Bearer " + tokenPaciente())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nutricionistaId\":1,\"servicioId\":1,"
+                                + "\"fecha\":\"2030-12-15\",\"hora\":\"10:00\","
+                                + "\"motivo\":\"Consulta en un dia que no corresponde\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("Dos citas que se cruzan por su duración responden 409")
+    void citasQueSeCruzan() throws Exception {
+        // La primera consulta dura 50 minutos, así que una cita a las 10:00 tiene ocupada la
+        // agenda hasta las 10:50. Después pido un control de 30 minutos a las 10:30: empieza a
+        // otra hora, pero cae justo dentro de la primera.
+        //
+        // Esta es la prueba de la regla que corregí: antes solo comparaba la hora de inicio, de
+        // modo que las dos citas convivían y la nutricionista quedaba con dos pacientes encima.
+        String primera = mockMvc.perform(post("/api/v1/citas")
+                        .header("Authorization", "Bearer " + tokenPaciente())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nutricionistaId\":1,\"servicioId\":1,"
+                                + "\"fecha\":\"2030-12-13\",\"hora\":\"10:00\","
+                                + "\"motivo\":\"Primera consulta de la prueba de traslape\"}"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        mockMvc.perform(post("/api/v1/citas")
+                        .header("Authorization", "Bearer " + tokenPaciente())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nutricionistaId\":1,\"servicioId\":2,"
+                                + "\"fecha\":\"2030-12-13\",\"hora\":\"10:30\","
+                                + "\"motivo\":\"Control que se encima con la consulta anterior\"}"))
+                .andExpect(status().isConflict());
+
+        // Borro la cita que creé: la prueba no tiene por qué dejar horas inventadas en la
+        // agenda real de la clínica. De paso esto ejercita el DELETE del administrador.
+        mockMvc.perform(delete("/api/v1/citas/" + extraerId(primera))
+                        .header("Authorization", "Bearer " + tokenAdmin()))
+                .andExpect(status().isNoContent());
     }
 
     @Test
@@ -186,7 +242,7 @@ class CitasIntegracionTest {
                         .header("Authorization", "Bearer " + tokenPaciente())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"nutricionistaId\":1,\"servicioId\":1,"
-                                + "\"fecha\":\"2030-12-15\",\"hora\":\"10:00\",\"motivo\":\"corto\"}"))
+                                + "\"fecha\":\"2030-12-13\",\"hora\":\"10:00\",\"motivo\":\"corto\"}"))
                 .andExpect(status().isBadRequest());
     }
 

@@ -21,7 +21,10 @@ public interface CitaRepository extends JpaRepository<Cita, Long> {
     // Con esto saco la distribución de atenciones por nutricionista que pide el caso.
     long countByNutricionista_Id(Long nutricionistaId);
 
-    // Antes de aceptar una hora reviso que el profesional no la tenga ya tomada.
-    boolean existsByNutricionista_IdAndFechaAndHoraAndEstadoIn(Long nutricionistaId,
-            java.time.LocalDate fecha, java.time.LocalTime hora, List<String> estados);
+    // Para comprobar la disponibilidad no me basta con preguntar si existe una cita a la
+    // misma hora exacta: dos citas de distinta duración pueden empezar a horas distintas y
+    // aún así pisarse. Por eso me traigo todas las del profesional en ese día y comparo los
+    // intervalos en el servicio, donde además tengo a mano la duración de cada atención.
+    List<Cita> findByNutricionista_IdAndFechaAndEstadoIn(Long nutricionistaId,
+            java.time.LocalDate fecha, List<String> estados);
 }

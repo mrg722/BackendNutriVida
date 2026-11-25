@@ -37,6 +37,29 @@ if %errorlevel%==0 (
     start "" /b "%MYSQLD%" --defaults-file="%MYSQLINI%"
 )
 
+REM --- Clave de firma de los tokens -------------------------------------------
+REM Los dos microservicios tienen que firmar y verificar con la misma clave, y esa
+REM clave no puede estar escrita en el repositorio: si estuviera, cualquiera que
+REM viera el codigo podria fabricar tokens validos y entrar como administrador.
+REM
+REM Por eso la genero aqui, al azar, la primera vez que arranco el sistema y la
+REM guardo fuera de los dos proyectos. Las veces siguientes reutilizo la misma, asi
+REM los tokens que ya emiti siguen siendo validos. Si quiero rotarla, borro el
+REM archivo y la proxima ejecucion crea una nueva.
+set "CLAVEJWT=%LOGS%\jwt-demostracion.key"
+if not exist "%CLAVEJWT%" (
+    echo       Generando la clave de firma de los tokens...
+    powershell -NoProfile -Command "$bytes = New-Object byte[] 48; [Security.Cryptography.RandomNumberGenerator]::Fill($bytes); [Convert]::ToBase64String($bytes) | Set-Content -NoNewline -Path '%CLAVEJWT%' -Encoding ascii"
+)
+for /f "usebackq delims=" %%k in ("%CLAVEJWT%") do set "JWT_SECRET=%%k"
+
+if not defined JWT_SECRET (
+    echo   ERROR: no pude leer la clave en %CLAVEJWT%
+    echo   Sin esa clave los microservicios no arrancan, que es justo lo que quiero.
+    pause
+    exit /b 1
+)
+
 REM --- 2. Microservicio de autenticacion --------------------------------------
 netstat -ano | findstr /r /c:":8081 .*LISTENING" >nul
 if %errorlevel%==0 (
@@ -74,7 +97,9 @@ if %intentos% geq 60 (
     echo       No respondieron a tiempo. Revisa %LOGS%\auth-error.log y %LOGS%\citas-error.log
     goto listos
 )
-timeout /t 2 /nobreak >nul
+REM Espero dos segundos. Uso ping en vez de timeout porque timeout falla cuando
+REM el script se ejecuta sin una consola interactiva, y ahi ensucia la salida.
+ping -n 3 127.0.0.1 >nul
 goto esperar
 :listos
 echo       Microservicios respondiendo.
@@ -88,7 +113,7 @@ if %errorlevel%==0 (
 ) else (
     echo [4/4] Publicando la pagina en el puerto 4173...
     start "" /b cmd /c "cd /d %BASE%\ClinicaNutriVidaEP2 && npm run preview > %LOGS%\preview.log 2>&1"
-    timeout /t 5 /nobreak >nul
+    ping -n 6 127.0.0.1 >nul
 )
 
 REM --- Direcciones para abrir -------------------------------------------------
