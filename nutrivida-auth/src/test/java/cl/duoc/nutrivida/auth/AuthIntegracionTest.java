@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 // Estas son las pruebas de integración del microservicio de autenticación.
@@ -23,6 +24,10 @@ import org.springframework.test.web.servlet.MockMvc;
 // responde 403 y no 401, que es justo la distinción que hay que demostrar.
 @SpringBootTest
 @AutoConfigureMockMvc
+// Las pruebas necesitan una clave de firma, y la aplicación ya no trae ninguna por defecto.
+// Le paso aquí una fija y exclusiva de las pruebas: así el conjunto corre solo, sin depender de
+// la variable de entorno del equipo, y la clave real de la demostración nunca entra al código.
+@TestPropertySource(properties = "app.jwt.secret=Y2xhdmUtZXhjbHVzaXZhLXBhcmEtbGFzLXBydWViYXMtYXV0b21hdGl6YWRhcy1kZS1udXRyaXZpZGE=")
 class AuthIntegracionTest {
 
     // MockMvc me deja hacer peticiones HTTP sin abrir un puerto real.
