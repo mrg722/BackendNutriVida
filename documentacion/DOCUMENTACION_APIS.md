@@ -42,7 +42,7 @@ Las rutas públicas en producción pasan por Nginx y quedan como
 Todos los errores tienen la misma forma:
 
 ```json
-{ "error": "La hora debe estar entre las 09:00 y las 18:00" }
+{ "error": "Una atención de 50 minutos a las 16:30 no cabe en el horario de Nut. Carolina Fuentes M., que atiende de 09:00 a 17:00" }
 ```
 
 ---
@@ -250,10 +250,13 @@ Observaciones del flujo:
 - Un `PACIENTE` solo puede llevar su cita a `CANCELADA`. Cualquier otro estado le da 403.
 - `ATENDIDA`, `CANCELADA` y `NO_ASISTIO` cierran la cita: cualquier cambio posterior da 409.
 - Reprogramar devuelve la cita a `SOLICITADA`, porque la clínica tiene que confirmar el horario nuevo.
-- `SOLICITADA` y `CONFIRMADA` ocupan el horario. Si se pide una hora ya tomada con ese
-  profesional, respondo 409. Una cita cancelada libera el cupo.
-- La fecha no puede ser anterior a hoy y la hora debe estar entre las 09:00 y las 18:00: ambos
-  casos dan 400.
+- `SOLICITADA` y `CONFIRMADA` ocupan el horario. Para saber si una hora está libre comparo los
+  bloques completos, no la hora de inicio: la duración del servicio dice hasta cuándo queda
+  ocupado el profesional, así que una consulta de 50 minutos a las 10:00 impide tomar un control
+  a las 10:30. Si la hora choca, respondo 409. Una cita cancelada libera el cupo.
+- La fecha no puede ser anterior a hoy, el día tiene que ser uno de los que ese profesional
+  atiende, y la cita completa tiene que caber dentro de su horario: no basta con que empiece
+  dentro de la jornada, también tiene que terminar antes del cierre. Los tres casos dan 400.
 - El motivo necesita entre 10 y 300 caracteres.
 
 ## Endpoint de mediciones

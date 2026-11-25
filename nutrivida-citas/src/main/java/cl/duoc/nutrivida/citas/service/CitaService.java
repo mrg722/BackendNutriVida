@@ -26,21 +26,24 @@ public class CitaService {
     private static final List<String> ESTADOS_QUE_OCUPAN_HORA =
             List.of(EstadoCita.SOLICITADA, EstadoCita.CONFIRMADA);
 
-    // La clínica atiende entre estas horas, igual que valida el formulario de React.
-    private static final LocalTime HORA_APERTURA = LocalTime.of(9, 0);
-    private static final LocalTime HORA_CIERRE = LocalTime.of(18, 0);
+    // Si un servicio quedara cargado sin duración, le reservo media hora, que es la atención
+    // más corta del catálogo. Prefiero bloquear un rato razonable antes que tratar la cita como
+    // si no ocupara tiempo y dejar que la siguiente se le encime.
+    private static final int DURACION_POR_DEFECTO_MINUTOS = 30;
 
     private final CitaRepository repository;
     private final NutricionistaService nutricionistas;
     private final ServicioService servicios;
     private final UsuarioAutenticado usuario;
+    private final HorarioAtencion horarios;
 
     public CitaService(CitaRepository repository, NutricionistaService nutricionistas,
-            ServicioService servicios, UsuarioAutenticado usuario) {
+            ServicioService servicios, UsuarioAutenticado usuario, HorarioAtencion horarios) {
         this.repository = repository;
         this.nutricionistas = nutricionistas;
         this.servicios = servicios;
         this.usuario = usuario;
+        this.horarios = horarios;
     }
 
     // Listado general: solo lo usa el administrador, que sí puede ver toda la agenda.
@@ -178,29 +181,78 @@ public class CitaService {
             throw new ReglaNegocioException("El servicio "
                     + servicio.getNombre() + " no está disponible");
         }
-        // Estas dos son datos mal enviados, no un choque con otra cita, así que respondo 400.
-        // No tiene sentido pedir una hora que ya pasó.
+        // Las tres comprobaciones que siguen son datos mal enviados, no un choque con otra
+        // cita, así que respondo 400 y no 409. Para partir, no tiene sentido pedir una hora
+        // que ya pasó.
         if (request.fecha().isBefore(LocalDate.now())) {
             throw new IllegalArgumentException("La fecha no puede ser anterior a hoy");
         }
-        if (request.hora().isBefore(HORA_APERTURA) || request.hora().isAfter(HORA_CIERRE)) {
-            throw new IllegalArgumentException("La hora debe estar entre las 09:00 y las 18:00");
+
+        // El día tiene que ser uno de los que atiende este profesional en particular. Antes
+        // comprobaba un horario único para toda la clínica, y eso dejaba agendar con Rodrigo un
+        // lunes aunque él atienda martes, jueves y sábado: la tabla guardaba el dato y la regla
+        // no lo miraba.
+        if (!horarios.atiendeEl(profesional, request.fecha())) {
+            throw new IllegalArgumentException(profesional.getNombre() + " no atiende los "
+                    + horarios.nombreDelDia(request.fecha().getDayOfWeek())
+                    + ". Sus días de atención son: " + profesional.getDiasAtencion());
+        }
+
+        // La cita no solo tiene que empezar dentro de la jornada: tiene que terminar dentro.
+        // Una consulta de 60 minutos a las 16:30 no cabe si el profesional cierra a las 17:00.
+        // Trabajo con minutos desde medianoche para no tener que pensar en vueltas de reloj.
+        int duracion = duracionDe(servicio);
+        int inicio = minutos(request.hora());
+        int termino = inicio + duracion;
+        int apertura = minutos(horarios.apertura(profesional));
+        int cierre = minutos(horarios.cierre(profesional));
+
+        if (inicio < apertura || termino > cierre) {
+            throw new IllegalArgumentException("Una atención de " + duracion
+                    + " minutos a las " + request.hora() + " no cabe en el horario de "
+                    + profesional.getNombre() + ", que atiende de "
+                    + horarios.apertura(profesional) + " a " + horarios.cierre(profesional));
         }
 
         // Evito la doble reserva, que es justo el problema de la agenda de papel del caso.
-        boolean ocupada = repository.existsByNutricionista_IdAndFechaAndHoraAndEstadoIn(
-                profesional.getId(), request.fecha(), request.hora(), ESTADOS_QUE_OCUPAN_HORA);
+        // Comparo intervalos completos y no horas exactas: dos citas se pisan cuando una
+        // empieza antes de que la otra termine, aunque no partan en el mismo minuto. Con la
+        // comparación anterior, una consulta de una hora a las 10:00 y un control a las 10:30
+        // convivían sin problema en la agenda, y el profesional terminaba con dos pacientes
+        // encima a la misma hora.
+        boolean ocupado = repository
+                .findByNutricionista_IdAndFechaAndEstadoIn(
+                        profesional.getId(), request.fecha(), ESTADOS_QUE_OCUPAN_HORA)
+                .stream()
+                // Si estoy reprogramando, la cita que muevo no choca consigo misma.
+                .filter(otra -> citaActual == null || !otra.getId().equals(citaActual.getId()))
+                .anyMatch(otra -> seCruzan(inicio, termino, otra));
 
-        // Si estoy reprogramando, su propio horario actual no cuenta como choque.
-        boolean esSuPropioHorario = citaActual != null
-                && citaActual.getNutricionista().getId().equals(profesional.getId())
-                && citaActual.getFecha().equals(request.fecha())
-                && citaActual.getHora().equals(request.hora());
-
-        if (ocupada && !esSuPropioHorario) {
+        if (ocupado) {
             throw new ReglaNegocioException("Ese horario ya está tomado con "
                     + profesional.getNombre());
         }
+    }
+
+    // Dos bloques se cruzan cuando cada uno empieza antes de que el otro termine. Dejo fuera
+    // el caso de los extremos a propósito: una cita que termina a las 10:00 y otra que empieza
+    // a las 10:00 no se pisan, van una seguida de la otra.
+    private boolean seCruzan(int inicio, int termino, Cita otra) {
+        int inicioOtra = minutos(otra.getHora());
+        int terminoOtra = inicioOtra + duracionDe(otra.getServicio());
+        return inicio < terminoOtra && inicioOtra < termino;
+    }
+
+    // La duración está en el catálogo de servicios, así que cada tipo de atención ocupa en la
+    // agenda el rato que de verdad dura: una consulta inicial bloquea más que un control.
+    private int duracionDe(Servicio servicio) {
+        return servicio.getDuracionMinutos() == null
+                ? DURACION_POR_DEFECTO_MINUTOS
+                : servicio.getDuracionMinutos();
+    }
+
+    private int minutos(LocalTime hora) {
+        return hora.getHour() * 60 + hora.getMinute();
     }
 
     // Estos tres estados cierran la cita: después de ellos ya no hay transición posible.

@@ -20,8 +20,10 @@ import cl.duoc.nutrivida.citas.model.Nutricionista;
 import cl.duoc.nutrivida.citas.model.Servicio;
 import cl.duoc.nutrivida.citas.repository.CitaRepository;
 import cl.duoc.nutrivida.citas.security.UsuarioAutenticado;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -46,25 +48,42 @@ class CitaServiceTest {
         nutricionistas = mock(NutricionistaService.class);
         servicios = mock(ServicioService.class);
         usuario = mock(UsuarioAutenticado.class);
-        service = new CitaService(repository, nutricionistas, servicios, usuario);
+        // HorarioAtencion no es un doble: no habla con la base de datos ni con nadie más, solo
+        // interpreta las dos columnas de la agenda. Me conviene que corra de verdad, porque es
+        // justamente la regla que quiero comprobar.
+        service = new CitaService(repository, nutricionistas, servicios, usuario,
+                new HorarioAtencion());
     }
 
     private Nutricionista profesional(boolean activo) {
+        // Sin días ni horario cargados, la regla cae en el horario general de la clínica. Lo
+        // dejo así en el caso habitual para que las pruebas no dependan del día en que corran.
+        return profesional(activo, null, null);
+    }
+
+    private Nutricionista profesional(boolean activo, String diasAtencion, String horario) {
         Nutricionista profesional = new Nutricionista();
         profesional.setId(1L);
         profesional.setCodigo("NUT001");
         profesional.setNombre("Nut. Carolina Fuentes M.");
         profesional.setCorreo(CORREO_PROFESIONAL);
         profesional.setEspecialidad("Obesidad y síndrome metabólico");
+        profesional.setDiasAtencion(diasAtencion);
+        profesional.setHorario(horario);
         profesional.setActivo(activo);
         return profesional;
     }
 
     private Servicio servicio(boolean activo) {
+        return servicio(activo, null);
+    }
+
+    private Servicio servicio(boolean activo, Integer duracionMinutos) {
         Servicio servicio = new Servicio();
         servicio.setId(1L);
         servicio.setCodigo("CN001");
         servicio.setNombre("Primera consulta nutricional");
+        servicio.setDuracionMinutos(duracionMinutos);
         servicio.setPrecio(35000);
         servicio.setActivo(activo);
         return servicio;
@@ -93,10 +112,25 @@ class CitaServiceTest {
         when(usuario.esPaciente()).thenReturn(true);
         when(nutricionistas.buscar(1L)).thenReturn(profesional(true));
         when(servicios.buscar(1L)).thenReturn(servicio(true));
-        when(repository.existsByNutricionista_IdAndFechaAndHoraAndEstadoIn(
-                anyLong(), any(LocalDate.class), any(LocalTime.class), anyList()))
-                .thenReturn(false);
+        // La agenda del día viene vacía: no hay con qué chocar.
+        when(repository.findByNutricionista_IdAndFechaAndEstadoIn(
+                anyLong(), any(LocalDate.class), anyList()))
+                .thenReturn(List.of());
         when(repository.save(any(Cita.class))).thenAnswer(l -> l.getArgument(0));
+    }
+
+    // Una cita ya tomada en la agenda del profesional, para los casos de choque.
+    private Cita citaOcupando(long id, LocalDate fecha, LocalTime hora, int duracionMinutos) {
+        Cita ocupada = new Cita();
+        ocupada.setId(id);
+        ocupada.setCorreoPaciente("otra.paciente@nutrivida.cl");
+        ocupada.setNutricionista(profesional(true));
+        ocupada.setServicio(servicio(true, duracionMinutos));
+        ocupada.setFecha(fecha);
+        ocupada.setHora(hora);
+        ocupada.setMotivo("Cita que ya estaba en la agenda");
+        ocupada.setEstado(EstadoCita.CONFIRMADA);
+        return ocupada;
     }
 
     @Test
@@ -118,14 +152,83 @@ class CitaServiceTest {
     @DisplayName("No permito dos citas en el mismo horario del mismo profesional")
     void horarioYaTomado() {
         escenarioPacienteConHoraLibre();
-        when(repository.existsByNutricionista_IdAndFechaAndHoraAndEstadoIn(
-                anyLong(), any(LocalDate.class), any(LocalTime.class), anyList()))
-                .thenReturn(true);
+        LocalDate fecha = LocalDate.now().plusDays(5);
+        when(repository.findByNutricionista_IdAndFechaAndEstadoIn(
+                anyLong(), any(LocalDate.class), anyList()))
+                .thenReturn(List.of(citaOcupando(99L, fecha, LocalTime.of(10, 0), 30)));
 
         // Este es justo el problema de la agenda de papel que el sistema viene a resolver.
-        assertThrows(ReglaNegocioException.class, () -> service.solicitar(
-                peticion(LocalDate.now().plusDays(5), LocalTime.of(10, 0))));
+        assertThrows(ReglaNegocioException.class,
+                () -> service.solicitar(peticion(fecha, LocalTime.of(10, 0))));
         verify(repository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Tampoco permito dos citas que se encimen por su duración")
+    void citasQueSeEnciman() {
+        escenarioPacienteConHoraLibre();
+        LocalDate fecha = LocalDate.now().plusDays(5);
+        // La cita que ya está en la agenda empieza a las 10:00 y dura 50 minutos, o sea que
+        // tiene ocupado al profesional hasta las 10:50.
+        when(repository.findByNutricionista_IdAndFechaAndEstadoIn(
+                anyLong(), any(LocalDate.class), anyList()))
+                .thenReturn(List.of(citaOcupando(99L, fecha, LocalTime.of(10, 0), 50)));
+        when(servicios.buscar(1L)).thenReturn(servicio(true, 30));
+
+        // Pido las 10:30: es otra hora de inicio, pero cae dentro de la cita anterior. Con la
+        // comparación de hora exacta que tenía antes, esto se aceptaba sin reclamar.
+        assertThrows(ReglaNegocioException.class,
+                () -> service.solicitar(peticion(fecha, LocalTime.of(10, 30))));
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Dos citas seguidas sí caben: una termina justo cuando empieza la otra")
+    void citasSeguidasSinChoque() {
+        escenarioPacienteConHoraLibre();
+        LocalDate fecha = LocalDate.now().plusDays(5);
+        // La anterior ocupa de 10:00 a 10:50.
+        when(repository.findByNutricionista_IdAndFechaAndEstadoIn(
+                anyLong(), any(LocalDate.class), anyList()))
+                .thenReturn(List.of(citaOcupando(99L, fecha, LocalTime.of(10, 0), 50)));
+        when(servicios.buscar(1L)).thenReturn(servicio(true, 30));
+
+        // Pido las 10:50, justo cuando la otra termina. No se pisan, van una seguida de la
+        // otra, y la agenda no tiene por qué rechazarla.
+        assertEquals(EstadoCita.SOLICITADA,
+                service.solicitar(peticion(fecha, LocalTime.of(10, 50))).estado());
+    }
+
+    @Test
+    @DisplayName("Rechazo un día que este profesional no atiende")
+    void diaQueNoAtiende() {
+        escenarioPacienteConHoraLibre();
+        when(nutricionistas.buscar(1L))
+                .thenReturn(profesional(true, "Lunes, Miércoles, Viernes", "09:00 - 17:00"));
+
+        // Busco el próximo domingo en vez de escribir una fecha fija, para que la prueba dé lo
+        // mismo el día en que se ejecute.
+        LocalDate domingo = LocalDate.now().plusDays(1);
+        while (domingo.getDayOfWeek() != DayOfWeek.SUNDAY) {
+            domingo = domingo.plusDays(1);
+        }
+
+        LocalDate fecha = domingo;
+        assertThrows(IllegalArgumentException.class,
+                () -> service.solicitar(peticion(fecha, LocalTime.of(10, 0))));
+    }
+
+    @Test
+    @DisplayName("La cita tiene que terminar antes de que el profesional cierre")
+    void laCitaNoAlcanzaATerminar() {
+        escenarioPacienteConHoraLibre();
+        when(nutricionistas.buscar(1L)).thenReturn(profesional(true, null, "09:00 - 17:00"));
+        when(servicios.buscar(1L)).thenReturn(servicio(true, 60));
+
+        // Las 16:30 están dentro de la jornada, pero una atención de una hora terminaría a las
+        // 17:30, con el profesional ya fuera. No basta con que la cita empiece a tiempo.
+        assertThrows(IllegalArgumentException.class, () -> service.solicitar(
+                peticion(LocalDate.now().plusDays(5), LocalTime.of(16, 30))));
     }
 
     @Test
@@ -250,9 +353,9 @@ class CitaServiceTest {
         when(repository.findById(7L)).thenReturn(Optional.of(cita(EstadoCita.CONFIRMADA)));
         when(nutricionistas.buscar(1L)).thenReturn(profesional(true));
         when(servicios.buscar(1L)).thenReturn(servicio(true));
-        when(repository.existsByNutricionista_IdAndFechaAndHoraAndEstadoIn(
-                anyLong(), any(LocalDate.class), any(LocalTime.class), anyList()))
-                .thenReturn(false);
+        when(repository.findByNutricionista_IdAndFechaAndEstadoIn(
+                anyLong(), any(LocalDate.class), anyList()))
+                .thenReturn(List.of());
         when(repository.save(any(Cita.class))).thenAnswer(l -> l.getArgument(0));
 
         CitaResponse respuesta = service.reprogramar(7L,
@@ -271,10 +374,11 @@ class CitaServiceTest {
         when(repository.findById(7L)).thenReturn(Optional.of(existente));
         when(nutricionistas.buscar(1L)).thenReturn(profesional(true));
         when(servicios.buscar(1L)).thenReturn(servicio(true));
-        // El repositorio avisa que la hora está ocupada: la ocupa esta misma cita.
-        when(repository.existsByNutricionista_IdAndFechaAndHoraAndEstadoIn(
-                anyLong(), any(LocalDate.class), any(LocalTime.class), anyList()))
-                .thenReturn(true);
+        // La agenda de ese día trae una sola cita ocupando el bloque, y es esta misma. Como la
+        // reconozco por su id, no la cuento como un choque consigo misma.
+        when(repository.findByNutricionista_IdAndFechaAndEstadoIn(
+                anyLong(), any(LocalDate.class), anyList()))
+                .thenReturn(List.of(existente));
         when(repository.save(any(Cita.class))).thenAnswer(l -> l.getArgument(0));
 
         // Solo cambio el motivo y mantengo fecha y hora: no debe fallar.
